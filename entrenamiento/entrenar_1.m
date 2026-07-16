@@ -1,6 +1,6 @@
 addpath('../utils');
 
-digitoPositivo = '0';
+digitoPositivo = '1';
 datasetPropio = '../datasets';
 
 imdsPos = imageDatastore(fullfile(datasetPropio, digitoPositivo), 'FileExtensions', {'.png','.jpg','.jpeg'});
@@ -77,6 +77,6 @@ disp(['Aciertos en su propio entrenamiento: ' num2str(aciertos) ' de ' num2str(n
 if ~exist('../redes', 'dir')
     mkdir('../redes');
 end
-save('../redes/red_0.mat', 'net');
+save('../redes/red_1.mat', 'net');
 
-disp('Entrenamiento terminado, red guardada en redes/red_0.mat');
+disp('Entrenamiento terminado, red guardada en redes/red_1.mat');
