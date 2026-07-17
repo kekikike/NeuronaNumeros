@@ -21,9 +21,7 @@ function digito = reconocer(imagenPath)
 
     vec = preprocesarImagen(imagenPath);
 
-    mejorScore = -Inf;
-    digito = -1;
-    huboPositivo = false;
+    scores = -Inf(1,10);
 
     for i = 1:numel(archivos)
         data = load(fullfile(redesFolder, archivos(i).name));
@@ -32,21 +30,17 @@ function digito = reconocer(imagenPath)
         w = net.IW{1,1};
         b = net.b{1};
 
-        salida = hardlim(w * vec + b);
         scoreNormalizado = (w * vec + b) / norm(w);
 
         numStr = extractBetween(archivos(i).name, 'red_', '.mat');
         numDigito = str2double(numStr{1});
 
-        if salida == 1
-            if ~huboPositivo || scoreNormalizado > mejorScore
-                mejorScore = scoreNormalizado;
-                digito = numDigito;
-                huboPositivo = true;
-            end
-        elseif ~huboPositivo && scoreNormalizado > mejorScore
-            mejorScore = scoreNormalizado;
-            digito = numDigito;
-        end
+        scores(numDigito + 1) = scoreNormalizado;
     end
+
+    disp('Puntajes por digito (0 a 9):');
+    disp(scores);
+
+    [~, idx] = max(scores);
+    digito = idx - 1;
 end
