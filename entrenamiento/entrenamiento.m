@@ -1,70 +1,56 @@
 addpath('../utils');
+tic;
+
 datasetPropio = '../datasets';
+rutaMnistConvertido = fullfile(datasetPropio, 'numbers', 'mnist_convertido');
 digitos = {'0','1','2','3','4','5','6','7','8','9'};
+
+archivosPorDigito = cell(1,10);
+for d = 1:numel(digitos)
+    digitoActual = digitos{d};
+
+    carpetaPropia = fullfile(datasetPropio, digitoActual);
+    filesPropios = {};
+    if exist(carpetaPropia, 'dir')
+        imdsTemp = imageDatastore(carpetaPropia, 'FileExtensions', {'.png','.jpg','.jpeg','.jfif'});
+        if numel(imdsTemp.Files) > 0
+            filesPropios = imdsTemp.Files;
+        end
+    end
+
+    carpetaMnist = fullfile(rutaMnistConvertido, digitoActual);
+    filesMnist = {};
+    if exist(carpetaMnist, 'dir')
+        imdsMnist = imageDatastore(carpetaMnist, 'FileExtensions', {'.png'});
+        if numel(imdsMnist.Files) > 0
+            filesMnist = imdsMnist.Files;
+        end
+    end
+
+    archivosPorDigito{d} = [filesPropios; filesMnist];
+    fprintf('Digito %s: %d propias + %d mnist = %d total\n', ...
+        digitoActual, numel(filesPropios), numel(filesMnist), numel(archivosPorDigito{d}));
+end
 
 for d = 1:numel(digitos)
     digitoPositivo = digitos{d};
-    carpetaPositivo = fullfile(datasetPropio, digitoPositivo);
-    if ~exist(carpetaPositivo, 'dir')
+    filesPos = archivosPorDigito{d};
+    nPos = numel(filesPos);
+    if nPos == 0
         continue;
-    end
-    contenidoPos = dir(fullfile(carpetaPositivo, '*.png'));
-    contenidoPos = [contenidoPos; dir(fullfile(carpetaPositivo, '*.jpg'))];
-    contenidoPos = [contenidoPos; dir(fullfile(carpetaPositivo, '*.jpeg'))];
-    if isempty(contenidoPos)
-        continue;
-    end
-
-    imdsPos = imageDatastore(carpetaPositivo, 'FileExtensions', {'.png','.jpg','.jpeg'});
-    nPos = numel(imdsPos.Files);
-
-    digitosPropios = {};
-    for i = 1:numel(digitos)
-        if ~strcmp(digitos{i}, digitoPositivo)
-            carpetaOtro = fullfile(datasetPropio, digitos{i});
-            if exist(carpetaOtro, 'dir')
-                digitosPropios{end+1} = digitos{i};
-            end
-        end
     end
 
     filesNeg = {};
-    for i = 1:numel(digitosPropios)
-        carpetaDigito = fullfile(datasetPropio, digitosPropios{i});
-        contenido = dir(fullfile(carpetaDigito, '*.png'));
-        contenido = [contenido; dir(fullfile(carpetaDigito, '*.jpg'))];
-        contenido = [contenido; dir(fullfile(carpetaDigito, '*.jpeg'))];
-        if isempty(contenido)
-            continue;
+    for i = 1:numel(digitos)
+        if i ~= d
+            filesNeg = [filesNeg; archivosPorDigito{i}];
         end
-        imdsTemp = imageDatastore(carpetaDigito, 'FileExtensions', {'.png','.jpg','.jpeg'});
-        filesNeg = [filesNeg; imdsTemp.Files];
     end
 
-    nNegPropios = numel(filesNeg);
+    idxSample = randperm(numel(filesNeg), min(nPos, numel(filesNeg)));
+    filesNeg = filesNeg(idxSample);
 
-    if nNegPropios < nPos
-        faltan = nPos - nNegPropios;
-        datasetMatlab = fullfile(matlabroot,'toolbox','nnet','nndemos','nndatasets','DigitDataset');
-        imdsDemo = imageDatastore(datasetMatlab, 'IncludeSubfolders', true, 'LabelSource', 'foldernames');
-
-        digitosExcluir = [digitosPropios, {digitoPositivo}];
-        idxDemoValidos = true(numel(imdsDemo.Files), 1);
-        for i = 1:numel(digitosExcluir)
-            idxDemoValidos = idxDemoValidos & (imdsDemo.Labels ~= digitosExcluir{i});
-        end
-        imdsDemoValidos = subset(imdsDemo, idxDemoValidos);
-
-        idxDemoSample = randperm(numel(imdsDemoValidos.Files), min(faltan, numel(imdsDemoValidos.Files)));
-        imdsDemoBal = subset(imdsDemoValidos, idxDemoSample);
-
-        filesNeg = [filesNeg; imdsDemoBal.Files];
-    else
-        idxSample = randperm(nNegPropios, nPos);
-        filesNeg = filesNeg(idxSample);
-    end
-
-    files = [imdsPos.Files; filesNeg];
+    files = [filesPos; filesNeg];
     labels = [ones(nPos,1); zeros(numel(filesNeg),1)];
 
     n = numel(files);
@@ -78,11 +64,16 @@ for d = 1:numel(digitos)
     P = P(:, idx);
     T = T(idx);
 
-    net = perceptron;
-    net = configure(net, P, T);
+    net = patternnet(30);
+    net.trainParam.showWindow = false;
+    net.trainParam.showCommandLine = false;
+    net.divideParam.trainRatio = 0.85;
+    net.divideParam.valRatio = 0.15;
+    net.divideParam.testRatio = 0;
+
     net = train(net, P, T);
 
-    Y = net(P);
+    Y = net(P) > 0.5;
     aciertos = sum(Y == T);
     fprintf('Digito %s: aciertos %d de %d\n', digitoPositivo, aciertos, n);
 
@@ -92,4 +83,5 @@ for d = 1:numel(digitos)
     save(fullfile('../redes', ['red_' digitoPositivo '.mat']), 'net');
 end
 
-disp('Entrenamiento de todos los digitos disponibles terminado.');
+toc;
+disp('Entrenamiento propias + mnist convertido terminado.');
