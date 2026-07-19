@@ -2,43 +2,23 @@ addpath('../utils');
 tic;
 
 datasetPropio = '../datasets';
-rutaMnistConvertido = fullfile(datasetPropio, 'numbers', 'mnist_convertido');
 digitos = {'0','1','2','3','4','5','6','7','8','9'};
 
-fprintf('=== Recolectando archivos por digito ===\n');
+fprintf('=== RECOLECTANDO IMAGENES ===\n');
 archivosPorDigito = cell(1,10);
 for d = 1:numel(digitos)
-    digitoActual = digitos{d};
-
-    carpetaPropia = fullfile(datasetPropio, digitoActual);
-    filesPropios = {};
-    if exist(carpetaPropia, 'dir')
-        imdsTemp = imageDatastore(carpetaPropia, 'FileExtensions', {'.png','.jpg','.jpeg','.jfif'});
-        if numel(imdsTemp.Files) > 0
-            filesPropios = imdsTemp.Files;
-        end
+    carpeta = fullfile(datasetPropio, digitos{d});
+    if ~exist(carpeta, 'dir')
+        fprintf('Carpeta %s no encontrada, se omite.\n', digitos{d});
+        archivosPorDigito{d} = {};
+        continue;
     end
-
-    carpetaMnist = fullfile(rutaMnistConvertido, digitoActual);
-    filesMnist = {};
-    if exist(carpetaMnist, 'dir')
-        imdsMnist = imageDatastore(carpetaMnist, 'FileExtensions', {'.png'});
-        if numel(imdsMnist.Files) > 0
-            filesMnist = imdsMnist.Files;
-        end
-    end
-
-    archivosPorDigito{d} = [filesPropios; filesMnist];
-    fprintf('Digito %s: %d propias + %d mnist = %d total\n', ...
-        digitoActual, numel(filesPropios), numel(filesMnist), numel(archivosPorDigito{d}));
+    imds = imageDatastore(carpeta, 'FileExtensions', {'.png','.jpg','.jpeg','.jfif'});
+    archivosPorDigito{d} = imds.Files;
+    fprintf('Digito %s: %d imagenes\n', digitos{d}, numel(imds.Files));
 end
 
-totalGeneral = sum(cellfun(@numel, archivosPorDigito));
-if totalGeneral == 0
-    error('No se encontro ninguna imagen. Revisa las rutas de datasetPropio y rutaMnistConvertido.');
-end
-
-fprintf('\n=== Entrenando redes ===\n');
+fprintf('\n=== ENTRENANDO 10 REDES独立 ===\n');
 resumen = zeros(10,3);
 
 for d = 1:numel(digitos)
@@ -57,7 +37,7 @@ for d = 1:numel(digitos)
         end
     end
     if isempty(filesNeg)
-        fprintf('Digito %s: sin negativos disponibles, se omite.\n', digitoPositivo);
+        fprintf('Digito %s: sin negativos, se omite.\n', digitoPositivo);
         continue;
     end
 
@@ -78,19 +58,23 @@ for d = 1:numel(digitos)
     P = P(:, idx);
     T = T(idx);
 
-    net = patternnet(30);
+    net = patternnet([128 64]);
+    net.trainFcn = 'trainscg';
+    net.trainParam.epochs = 300;
+    net.trainParam.goal = 1e-6;
     net.trainParam.showWindow = false;
     net.trainParam.showCommandLine = false;
-    net.divideParam.trainRatio = 0.85;
+    net.divideParam.trainRatio = 0.80;
     net.divideParam.valRatio = 0.15;
-    net.divideParam.testRatio = 0;
+    net.divideParam.testRatio = 0.05;
+    net.performFcn = 'crossentropy';
 
     net = train(net, P, T);
 
     Y = net(P) > 0.5;
     aciertos = sum(Y == T);
     porcentaje = 100 * aciertos / n;
-    fprintf('Digito %s: %d de %d aciertos (%.2f%%)\n', digitoPositivo, aciertos, n, porcentaje);
+    fprintf('Digito %s: %d de %d (%.2f%%)\n', digitoPositivo, aciertos, n, porcentaje);
 
     resumen(d,:) = [d-1, aciertos, n];
 
@@ -101,8 +85,6 @@ for d = 1:numel(digitos)
 end
 
 promedioGeneral = 100 * sum(resumen(:,2)) / sum(resumen(:,3));
-fprintf('\n=== Resumen final ===\n');
-fprintf('Promedio general del sistema: %.2f%%\n', promedioGeneral);
-
+fprintf('\n=== RESUMEN ===\n');
+fprintf('Promedio general: %.2f%%\n', promedioGeneral);
 toc;
-disp('Entrenamiento completo terminado.');
