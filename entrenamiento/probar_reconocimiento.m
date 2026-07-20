@@ -1,158 +1,357 @@
+function probar_reconocimiento()
 addpath('../utils');
-[archivo, ruta] = uigetfile({'*.png;*.jpg;*.jpeg;*.jfif', 'Imagenes'}, 'Selecciona una imagen');
-if isequal(archivo, 0)
-    disp('No se selecciono ninguna imagen');
-    return;
-end
-imagenPath = fullfile(ruta, archivo);
-[digito, scores] = reconocer(imagenPath);
-vec = preprocesarImagen(imagenPath);
+
+tamanoLienzo = 600;
+lienzo = uint8(255 * ones(tamanoLienzo, tamanoLienzo));
 
 fig = figure('Name', 'Reconocimiento', 'NumberTitle', 'off', ...
-    'Position', [50 50 1300 700], 'Color', [0.94 0.94 0.94], ...
+    'Position', [50 50 1350 850], 'Color', [0.94 0.94 0.94], ...
     'Resize', 'off');
 
-axImg = axes('Parent', fig, 'Position', [0.02 0.22 0.42 0.72]);
-img = imread(imagenPath);
-if size(img, 3) == 3
-    imgGray = rgb2gray(img);
-else
-    imgGray = img;
-end
-imagesc(axImg, double(imgGray));
-colormap(axImg, gray);
-axis(axImg, 'off');
-title(axImg, ['Numero identificado: ' num2str(digito)], 'FontSize', 18, 'FontWeight', 'bold');
+axDibujo = axes('Parent', fig, 'Units', 'pixels', 'Position', [50 250 600 550]);
+imgObj = imshow(lienzo, 'Parent', axDibujo);
+title(axDibujo, 'Dibuja aqui con el mouse', 'FontSize', 13);
 
-axGraf = axes('Parent', fig, 'Position', [0.52 0.12 0.45 0.8]);
-colores = repmat([0.3 0.6 0.9], 10, 1);
-colores(digito+1, :) = [0.9 0.3 0.3];
-barra = bar(axGraf, 0:9, scores, 'FaceColor', 'flat');
-barra.CData = colores;
-xlabel(axGraf, 'Digito', 'FontSize', 13);
-ylabel(axGraf, 'Puntaje', 'FontSize', 13);
-title(axGraf, 'Puntaje por digito', 'FontSize', 15, 'FontWeight', 'bold');
-grid(axGraf, 'on');
-axGraf.FontSize = 12;
+axGraf = axes('Parent', fig, 'Units', 'pixels', 'Position', [700 200 600 600]);
+axGraf.Visible = 'off';
 
-uicontrol(fig, 'Style', 'text', 'String', '¿Este es tu numero?', ...
-    'Units', 'normalized', 'Position', [0.02 0.12 0.42 0.07], ...
-    'FontSize', 16, 'FontWeight', 'bold', ...
-    'BackgroundColor', [1 1 0.85]);
+uicontrol(fig, 'Style', 'pushbutton', 'String', 'Reconocer', ...
+    'Position', [50 195 140 45], 'FontSize', 13, 'FontWeight', 'bold', ...
+    'BackgroundColor', [0.7 0.85 1], ...
+    'Callback', @revisarCallback);
 
-uicontrol(fig, 'Style', 'pushbutton', 'String', 'Si', ...
-    'Units', 'normalized', 'Position', [0.07 0.03 0.16 0.07], ...
-    'FontSize', 15, 'FontWeight', 'bold', ...
-    'BackgroundColor', [0.6 1 0.6], ...
-    'Callback', @(src, evt) confirmar_Callback(src, evt, fig));
+uicontrol(fig, 'Style', 'pushbutton', 'String', 'Limpiar', ...
+    'Position', [210 195 140 45], 'FontSize', 13, 'FontWeight', 'bold', ...
+    'BackgroundColor', [0.9 0.9 0.9], ...
+    'Callback', @limpiarCallback);
 
-uicontrol(fig, 'Style', 'pushbutton', 'String', 'No', ...
-    'Units', 'normalized', 'Position', [0.27 0.03 0.16 0.07], ...
-    'FontSize', 15, 'FontWeight', 'bold', ...
-    'BackgroundColor', [1 0.6 0.6], ...
-    'Callback', @(src, evt) negar_Callback(src, evt, fig, vec, imagenPath));
+uicontrol(fig, 'Style', 'pushbutton', 'String', 'Cargar Imagen', ...
+    'Position', [370 195 140 45], 'FontSize', 13, 'FontWeight', 'bold', ...
+    'BackgroundColor', [0.9 0.95 0.7], ...
+    'Callback', @cargarImagenCallback);
 
-function confirmar_Callback(~, ~, fig)
-    delete(findall(fig, 'Style', 'pushbutton'));
-    delete(findall(fig, 'Style', 'text', 'Tag', ''));
-    uicontrol(fig, 'Style', 'text', 'String', 'Correcto!', ...
-        'Units', 'normalized', 'Position', [0.05 0.03 0.35 0.1], ...
-        'FontSize', 24, 'FontWeight', 'bold', ...
-        'ForegroundColor', [0 0.6 0], 'BackgroundColor', [0.94 0.94 0.94]);
-end
+lblPregunta = uicontrol(fig, 'Style', 'text', 'String', '', ...
+    'Position', [50 140 300 35], 'FontSize', 13, 'FontWeight', 'bold', ...
+    'BackgroundColor', [0.94 0.94 0.94], 'Visible', 'off');
 
-function negar_Callback(~, ~, fig, vec, imagenPath)
-    delete(findall(fig, 'Style', 'pushbutton'));
-    delete(findall(fig, 'Style', 'text', 'Tag', ''));
+btnSi = uicontrol(fig, 'Style', 'pushbutton', 'String', 'Si', ...
+    'Position', [100 95 100 40], 'FontSize', 14, 'FontWeight', 'bold', ...
+    'BackgroundColor', [0.6 1 0.6], 'Visible', 'off', ...
+    'Callback', @confirmar_Callback);
 
-    uicontrol(fig, 'Style', 'text', 'String', '¿Cual es tu numero?', ...
-        'Units', 'normalized', 'Position', [0.02 0.16 0.42 0.05], ...
-        'FontSize', 14, 'FontWeight', 'bold', ...
-        'BackgroundColor', [1 1 0.85]);
+btnNo = uicontrol(fig, 'Style', 'pushbutton', 'String', 'No', ...
+    'Position', [230 95 100 40], 'FontSize', 14, 'FontWeight', 'bold', ...
+    'BackgroundColor', [1 0.6 0.6], 'Visible', 'off', ...
+    'Callback', @negar_Callback);
 
-    for d = 0:9
-        fila = floor(d / 5);
-        columna = mod(d, 5);
-        bx = 0.04 + columna * 0.08;
-        by = 0.06 + fila * 0.045;
-        uicontrol(fig, 'Style', 'pushbutton', 'String', num2str(d), ...
-            'Units', 'normalized', 'Position', [bx by 0.07 0.04], ...
-            'FontSize', 13, 'FontWeight', 'bold', ...
-            'BackgroundColor', [0.85 0.85 1], ...
-            'Callback', @(src, evt) seleccionar_Callback(src, evt, fig, vec, d, imagenPath));
+lblInfo = uicontrol(fig, 'Style', 'text', 'String', '', ...
+    'Position', [50 30 300 60], 'FontSize', 13, 'FontWeight', 'bold', ...
+    'BackgroundColor', [0.94 0.94 0.94], 'Visible', 'off');
+
+estado.lienzo = lienzo;
+estado.dibujando = false;
+estado.grosorPincel = 4;
+estado.ultimoX = -1;
+estado.ultimoY = -1;
+estado.vecGuardado = [];
+estado.tamanoLienzo = tamanoLienzo;
+estado.imgObj = imgObj;
+estado.axDibujo = axDibujo;
+estado.axGraf = axGraf;
+estado.fig = fig;
+estado.lblPregunta = lblPregunta;
+estado.btnSi = btnSi;
+estado.btnNo = btnNo;
+estado.lblInfo = lblInfo;
+guidata(fig, estado);
+
+set(fig, 'WindowButtonDownFcn', @empezarDibujo);
+set(fig, 'WindowButtonUpFcn', @terminarDibujo);
+set(fig, 'WindowButtonMotionFcn', @moverPincel);
+
+    function empezarDibujo(~, ~)
+        e = guidata(fig);
+        pt = get(e.axDibujo, 'CurrentPoint');
+        x = round(pt(1,1));
+        y = round(pt(1,2));
+        tam = e.tamanoLienzo;
+        if x >= 1 && x <= tam && y >= 1 && y <= tam
+            e.dibujando = true;
+            e.ultimoX = x;
+            e.ultimoY = y;
+            guidata(fig, e);
+            pintarLinea(x, y);
+        end
     end
 
-    uicontrol(fig, 'Style', 'pushbutton', 'String', 'Ninguno', ...
-        'Units', 'normalized', 'Position', [0.13 0.01 0.2 0.04], ...
-        'FontSize', 12, 'FontWeight', 'bold', ...
-        'BackgroundColor', [0.9 0.9 0.9], ...
-        'Callback', @(src, evt) ninguno_Callback(src, evt, fig));
-end
+    function terminarDibujo(~, ~)
+        e = guidata(fig);
+        e.dibujando = false;
+        guidata(fig, e);
+    end
 
-function ninguno_Callback(~, ~, fig)
-    delete(findall(fig, 'Style', 'pushbutton'));
-    delete(findall(fig, 'Style', 'text', 'Tag', ''));
-    uicontrol(fig, 'Style', 'text', 'String', 'Imagen descartada. No se guardo.', ...
-        'Units', 'normalized', 'Position', [0.02 0.03 0.42 0.08], ...
-        'FontSize', 14, 'FontWeight', 'bold', ...
-        'ForegroundColor', [0.5 0.5 0.5], 'BackgroundColor', [0.94 0.94 0.94]);
-end
-
-function seleccionar_Callback(~, ~, fig, vec, digitoCorrecto, imagenPath)
-    delete(findall(fig, 'Style', 'pushbutton'));
-    delete(findall(fig, 'Style', 'text', 'Tag', ''));
-
-    redesFolder = '../redes';
-
-    for d = 0:9
-        archivoRed = fullfile(redesFolder, ['red_' num2str(d) '.mat']);
-        if ~exist(archivoRed, 'file')
-            continue;
+    function moverPincel(~, ~)
+        e = guidata(fig);
+        if e.dibujando
+            pt = get(e.axDibujo, 'CurrentPoint');
+            x = round(pt(1,1));
+            y = round(pt(1,2));
+            pintarLinea(x, y);
         end
-        data = load(archivoRed);
-        net = data.net;
+    end
 
-        if d == digitoCorrecto
-            target = 1;
+    function pintarLinea(x, y)
+        e = guidata(fig);
+        tam = e.tamanoLienzo;
+        g = e.grosorPincel;
+
+        if x < 1 || x > tam || y < 1 || y > tam
+            return;
+        end
+
+        px = e.ultimoX;
+        py = e.ultimoY;
+
+        if px < 1
+            px = x;
+            py = y;
+        end
+
+        dist = max(abs(x - px), abs(y - py));
+        pasos = max(dist, 1);
+        xs = round(linspace(px, x, pasos + 1));
+        ys = round(linspace(py, y, pasos + 1));
+
+        for k = 1:numel(xs)
+            xi = xs(k);
+            yi = ys(k);
+            r1 = max(1, yi - g);
+            r2 = min(tam, yi + g);
+            c1 = max(1, xi - g);
+            c2 = min(tam, xi + g);
+            e.lienzo(r1:r2, c1:c2) = 0;
+        end
+
+        e.ultimoX = x;
+        e.ultimoY = y;
+        set(e.imgObj, 'CData', e.lienzo);
+        guidata(fig, e);
+        drawnow limitrate;
+    end
+
+    function cargarImagenCallback(~, ~)
+        e = guidata(fig);
+
+        [archivo, ruta] = uigetfile({ ...
+            '*.png;*.jpg;*.jpeg;*.bmp;*.gif', 'Imagenes (*.png, *.jpg, *.jpeg, *.bmp, *.gif)'; ...
+            '*.*', 'Todos los archivos (*.*)'}, ...
+            'Selecciona una imagen');
+
+        if isequal(archivo, 0)
+            return;
+        end
+
+        rutaCompleta = fullfile(ruta, archivo);
+        img = imread(rutaCompleta);
+
+        if size(img, 3) == 4
+            img = img(:,:,1:3);
+        end
+
+        imgGray = rgb2gray(img);
+        [alto, ancho] = size(imgGray);
+        tam = e.tamanoLienzo;
+
+        if alto > ancho
+            escala = tam / alto;
         else
-            target = 0;
+            escala = tam / ancho;
         end
 
-        [net, ~, ~] = adapt(net, vec, target);
-        save(archivoRed, 'net');
+        nuevoAlto = round(alto * escala);
+        nuevoAncho = round(ancho * escala);
+
+        imgResized = imresize(imgGray, [nuevoAlto, nuevoAncho]);
+
+        lienzoNuevo = uint8(255 * ones(tam, tam));
+        filaInicio = round((tam - nuevoAlto) / 2) + 1;
+        colInicio = round((tam - nuevoAncho) / 2) + 1;
+        lienzoNuevo(filaInicio:filaInicio+nuevoAlto-1, colInicio:colInicio+nuevoAncho-1) = imgResized;
+
+        e.lienzo = lienzoNuevo;
+        e.ultimoX = -1;
+        e.ultimoY = -1;
+        set(e.imgObj, 'CData', e.lienzo);
+        guidata(fig, e);
+
+        e.lblInfo.String = ['Imagen cargada: ' archivo];
+        e.lblInfo.ForegroundColor = [0.3 0.3 0.7];
+        e.lblInfo.Visible = 'on';
     end
 
-    uicontrol(fig, 'Style', 'text', ...
-        'String', ['Guardado como numero ' num2str(digitoCorrecto) '. Red actualizada.'], ...
-        'Units', 'normalized', 'Position', [0.02 0.03 0.42 0.08], ...
-        'FontSize', 14, 'FontWeight', 'bold', ...
-        'ForegroundColor', [0 0.4 0.8], 'BackgroundColor', [0.94 0.94 0.94]);
-
-    fprintf('Imagen "%s" guardada como numero %d. Redes actualizadas.\n', imagenPath, digitoCorrecto);
-end
-
-function [digito, scores] = reconocer(imagenPath)
-    redesFolder = '../redes';
-    archivos = dir(fullfile(redesFolder, 'red_*.mat'));
-    vec = preprocesarImagen(imagenPath);
-    scores = -Inf(1,10);
-
-    for i = 1:numel(archivos)
-        data = load(fullfile(redesFolder, archivos(i).name));
-        net = data.net;
-
-        numStr = extractBetween(archivos(i).name, 'red_', '.mat');
-        numDigito = str2double(numStr{1});
-
-        salida = net(vec);
-        scoreNormalizado = salida - 0.5;
-
-        scores(numDigito + 1) = scoreNormalizado;
+    function limpiarCallback(~, ~)
+        e = guidata(fig);
+        e.lienzo = uint8(255 * ones(e.tamanoLienzo, e.tamanoLienzo));
+        e.ultimoX = -1;
+        e.ultimoY = -1;
+        set(e.imgObj, 'CData', e.lienzo);
+        cla(e.axGraf);
+        e.axGraf.Visible = 'off';
+        e.lblPregunta.Visible = 'off';
+        e.lblInfo.Visible = 'off';
+        e.btnSi.Visible = 'off';
+        e.btnSi.Enable = 'off';
+        e.btnNo.Visible = 'off';
+        e.btnNo.Enable = 'off';
+        e.vecGuardado = [];
+        guidata(fig, e);
+        delete(findall(fig, 'Style', 'pushbutton', '-and', 'Tag', 'numbtn'));
+        delete(findall(fig, 'Style', 'text', '-and', 'Tag', 'infobtn'));
     end
 
-    disp('Puntajes por digito (0 a 9):');
-    disp(scores);
+    function revisarCallback(~, ~)
+        e = guidata(fig);
 
-    [~, idx] = max(scores);
-    digito = idx - 1;
+        if all(e.lienzo(:) == 255)
+            return;
+        end
+
+        e.lblInfo.Visible = 'off';
+        guidata(fig, e);
+
+        archivoTemp = fullfile(tempdir, 'dibujo_temp.png');
+        imwrite(e.lienzo, archivoTemp);
+
+        e.vecGuardado = preprocesarImagen(archivoTemp);
+
+        scores = -Inf(1,10);
+        redesFolder = '../redes';
+        archivos = dir(fullfile(redesFolder, 'red_*.mat'));
+
+        for i = 1:numel(archivos)
+            data = load(fullfile(redesFolder, archivos(i).name));
+            net = data.net;
+            numStr = extractBetween(archivos(i).name, 'red_', '.mat');
+            numDigito = str2double(numStr{1});
+            salida = net(e.vecGuardado);
+            scoreNormalizado = salida - 0.5;
+            scores(numDigito + 1) = scoreNormalizado;
+        end
+
+        [~, idx] = max(scores);
+        digito = idx - 1;
+
+        e.axGraf.Visible = 'on';
+        cla(e.axGraf);
+        colores = repmat([0.3 0.6 0.9], 10, 1);
+        colores(digito+1, :) = [0.9 0.3 0.3];
+        barra = bar(e.axGraf, 0:9, scores, 'FaceColor', 'flat');
+        barra.CData = colores;
+        xlabel(e.axGraf, 'Digito', 'FontSize', 12);
+        ylabel(e.axGraf, 'Puntaje', 'FontSize', 12);
+        title(e.axGraf, sprintf('Identificado: %d', digito), 'FontSize', 15, 'FontWeight', 'bold');
+        grid(e.axGraf, 'on');
+        e.axGraf.FontSize = 11;
+
+        e.lblPregunta.String = '¿Este es tu numero?';
+        e.lblPregunta.ForegroundColor = [0 0 0];
+        e.lblPregunta.Visible = 'on';
+        e.btnSi.Visible = 'on';
+        e.btnSi.Enable = 'on';
+        e.btnNo.Visible = 'on';
+        e.btnNo.Enable = 'on';
+
+        guidata(fig, e);
+        fprintf('Numero identificado: %d\n', digito);
+    end
+
+    function confirmar_Callback(~, ~)
+        e = guidata(fig);
+        e.lblPregunta.Visible = 'off';
+        e.btnSi.Visible = 'off';
+        e.btnSi.Enable = 'off';
+        e.btnNo.Visible = 'off';
+        e.btnNo.Enable = 'off';
+        e.lblInfo.String = 'Correcto!';
+        e.lblInfo.ForegroundColor = [0 0.6 0];
+        e.lblInfo.Visible = 'on';
+        guidata(fig, e);
+    end
+
+    function negar_Callback(~, ~)
+        e = guidata(fig);
+        e.lblPregunta.Visible = 'off';
+        e.btnSi.Visible = 'off';
+        e.btnSi.Enable = 'off';
+        e.btnNo.Visible = 'off';
+        e.btnNo.Enable = 'off';
+
+        uicontrol(fig, 'Style', 'text', 'String', '¿Cual es tu numero?', ...
+            'Position', [50 140 300 35], 'FontSize', 13, 'FontWeight', 'bold', ...
+            'BackgroundColor', [1 1 0.85], 'Tag', 'infobtn');
+
+        for d = 0:9
+            fila = floor(d / 5);
+            columna = mod(d, 5);
+            bx = 50 + columna * 65;
+            by = 95 - fila * 50;
+            uicontrol(fig, 'Style', 'pushbutton', 'String', num2str(d), ...
+                'Position', [bx by 50 40], 'FontSize', 14, 'FontWeight', 'bold', ...
+                'BackgroundColor', [0.85 0.85 1], 'Tag', 'numbtn', ...
+                'Callback', @(src, evt) seleccionar_Callback(d));
+        end
+
+        uicontrol(fig, 'Style', 'pushbutton', 'String', 'Ninguno', ...
+            'Position', [170 0 130 35], 'FontSize', 12, 'FontWeight', 'bold', ...
+            'BackgroundColor', [0.9 0.9 0.9], 'Tag', 'numbtn', ...
+            'Callback', @ninguno_Callback);
+
+        guidata(fig, e);
+    end
+
+    function seleccionar_Callback(digitoCorrecto)
+        e = guidata(fig);
+
+        delete(findall(fig, 'Tag', 'numbtn'));
+        delete(findall(fig, 'Tag', 'infobtn'));
+
+        redesFolder = '../redes';
+
+        for d = 0:9
+            archivoRed = fullfile(redesFolder, ['red_' num2str(d) '.mat']);
+            if ~exist(archivoRed, 'file')
+                continue;
+            end
+            data = load(archivoRed);
+            net = data.net;
+
+            if d == digitoCorrecto
+                target = 1;
+            else
+                target = 0;
+            end
+
+            [net, ~, ~] = adapt(net, e.vecGuardado, target);
+            save(archivoRed, 'net');
+        end
+
+        e.lblInfo.String = ['Guardado como numero ' num2str(digitoCorrecto) '. Red actualizada.'];
+        e.lblInfo.ForegroundColor = [0 0.4 0.8];
+        e.lblInfo.Visible = 'on';
+
+        fprintf('Guardado como numero %d. Redes actualizadas.\n', digitoCorrecto);
+        guidata(fig, e);
+    end
+
+    function ninguno_Callback(~, ~)
+        delete(findall(fig, 'Tag', 'numbtn'));
+        delete(findall(fig, 'Tag', 'infobtn'));
+
+        e = guidata(fig);
+        e.lblInfo.String = 'Imagen descartada. No se guardo.';
+        e.lblInfo.ForegroundColor = [0.5 0.5 0.5];
+        e.lblInfo.Visible = 'on';
+        guidata(fig, e);
+    end
+
 end
